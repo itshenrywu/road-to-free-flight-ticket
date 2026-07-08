@@ -16,6 +16,7 @@
             --primary:   #0b0b0b;
             --secondary: #52514e;
             --ring:      rgba(11, 11, 11, 0.10);
+            --label:     #ffffff;
         }
         @media (prefers-color-scheme: dark) {
             :root {
@@ -24,7 +25,7 @@
                 --series:    #3987e5;
                 --grid:      #2c2c2a;
                 --baseline:  #383835;
-                --muted:     #898781;
+                --muted:     #a7a59e;
                 --primary:   #ffffff;
                 --secondary: #c3c2b7;
                 --ring:      rgba(255, 255, 255, 0.10);
@@ -123,7 +124,8 @@
                 baseline:  get("--baseline"),
                 muted:     get("--muted"),
                 primary:   get("--primary"),
-                secondary: get("--secondary")
+                secondary: get("--secondary"),
+                label:     get("--label")
             }
         }
 
@@ -179,7 +181,7 @@
                     ctx.fillStyle = p.series
                     ctx.fill()
 
-                    ctx.fillStyle = p.surface
+                    ctx.fillStyle = p.label
                     ctx.textAlign = "left"
                     ctx.textBaseline = "middle"
                     ctx.fillText(label, bx + padX, by + bh / 2 + 1)
