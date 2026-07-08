@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Henry 的星宇航空免費機票之路</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --page:      #f9f9f7;
+            --surface:   #fcfcfb;
+            --series:    #2a78d6;
+            --grid:      #e1e0d9;
+            --baseline:  #c3c2b7;
+            --muted:     #898781;
+            --primary:   #0b0b0b;
+            --secondary: #52514e;
+            --ring:      rgba(11, 11, 11, 0.10);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --page:      #0d0d0d;
+                --surface:   #1a1a19;
+                --series:    #3987e5;
+                --grid:      #2c2c2a;
+                --baseline:  #383835;
+                --muted:     #898781;
+                --primary:   #ffffff;
+                --secondary: #c3c2b7;
+                --ring:      rgba(255, 255, 255, 0.10);
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+        }
+
+        body {
+            background: var(--page);
+            font-family: "Noto Sans TC","Noto Sans SC","Noto Sans HK","Noto Sans JP","Noto Sans KR","SF Pro TC","SF Pro Text","SF Pro Icons","PingFang TC","Helvetica Neue",Helvetica,Arial,"Microsoft JhengHei",wf_SegoeUI,"Segoe UI",Segoe,"Segoe WP",Tahoma,Verdana,Ubuntu,"Bitstream Vera Sans","DejaVu Sans",微軟正黑體,"LiHei Pro","WenQuanYi Micro Hei","Droid Sans Fallback","AR PL UMing TW",Roboto,"Hiragino Maru Gothic ProN",メイリオ,"ヒラギノ丸ゴ ProN W4",Meiryo,"Droid Sans",sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .frame {
+            background: var(--surface);
+            border: 1px solid var(--ring);
+            border-radius: 14px;
+            padding: 24px;
+        }
+
+        /* Square plot: side = smaller of the available width / height.
+           body padding (24*2) + frame padding (24*2) = 96px reserved. */
+        .plot {
+            position: relative;
+            width: min(100vw - 96px, 100vh - 96px);
+            height: min(100vw - 96px, 100vh - 96px);
+        }
+
+        @media (max-width: 560px) {
+            body { padding: 12px; }
+            .frame { padding: 14px; }
+            .plot {
+                width: min(100vw - 52px, 100vh - 52px);
+                height: min(100vw - 52px, 100vh - 52px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="frame">
+        <div class="plot">
+            <canvas id="chart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const TARGET = 17500
+
+        // >>> BUILD:CSV (auto-generated from data/history.csv by build.sh; do not edit) >>>
+        const CSV_DATA = `
+2025-11, 500
+2025-12, 1701
+2026-01, 2341
+2026-02, 3399
+2026-03, 4726
+2026-04, 5652
+2026-05, 6193
+2026-06, 6963
+`
+        // <<< BUILD:CSV <<<
+
+        function parseCsv(text) {
+            return text
+                .split(/\r?\n/)
+                .map(line => line.trim())
+                .filter(line => line.length > 0)
+                .map(line => {
+                    const parts = line.split(",")
+                    const label = parts[0].trim().replace("-", "/")
+                    const value = Number(parts[1].trim())
+                    return { label, value }
+                })
+        }
+
+        function palette() {
+            const s = getComputedStyle(document.documentElement)
+            const get = name => s.getPropertyValue(name).trim()
+            return {
+                page:      get("--page"),
+                surface:   get("--surface"),
+                series:    get("--series"),
+                grid:      get("--grid"),
+                baseline:  get("--baseline"),
+                muted:     get("--muted"),
+                primary:   get("--primary"),
+                secondary: get("--secondary")
+            }
+        }
+
+        function hexToRgba(hex, alpha) {
+            const h = hex.replace("#", "")
+            const r = parseInt(h.substring(0, 2), 16)
+            const g = parseInt(h.substring(2, 4), 16)
+            const b = parseInt(h.substring(4, 6), 16)
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`
+        }
+
+        const fmt = new Intl.NumberFormat("en-US")
+
+        function targetLinePlugin(p) {
+            return {
+                id: "targetLine",
+                afterDatasetsDraw(chart) {
+                    const { ctx, chartArea, scales } = chart
+                    if (TARGET > scales.y.max) return
+                    const y = scales.y.getPixelForValue(TARGET)
+                    const left = chartArea.left
+                    const right = chartArea.right
+
+                    ctx.save()
+
+                    ctx.beginPath()
+                    ctx.setLineDash([6, 5])
+                    ctx.lineWidth = 2
+                    ctx.strokeStyle = p.series
+                    ctx.moveTo(left, y)
+                    ctx.lineTo(right, y)
+                    ctx.stroke()
+                    ctx.setLineDash([])
+
+                    const label = fmt.format(TARGET)
+                    ctx.font = "700 14px system-ui, sans-serif"
+                    const padX = 10
+                    const padY = 6
+                    const tw = ctx.measureText(label).width
+                    const bw = tw + padX * 2
+                    const bh = 26
+                    const bx = right - bw
+                    const by = y - bh - 6
+                    const r = 8
+
+                    ctx.beginPath()
+                    ctx.moveTo(bx + r, by)
+                    ctx.arcTo(bx + bw, by, bx + bw, by + bh, r)
+                    ctx.arcTo(bx + bw, by + bh, bx, by + bh, r)
+                    ctx.arcTo(bx, by + bh, bx, by, r)
+                    ctx.arcTo(bx, by, bx + bw, by, r)
+                    ctx.closePath()
+                    ctx.fillStyle = p.series
+                    ctx.fill()
+
+                    ctx.fillStyle = p.surface
+                    ctx.textAlign = "left"
+                    ctx.textBaseline = "middle"
+                    ctx.fillText(label, bx + padX, by + bh / 2 + 1)
+
+                    ctx.restore()
+                }
+            }
+        }
+
+        function buildConfig(rows, p) {
+            const dataMax = Math.max(...rows.map(r => r.value))
+            const yMax = Math.max(20000, Math.ceil(dataMax / 5000) * 5000)
+
+            return {
+                type: "line",
+                plugins: [targetLinePlugin(p)],
+                data: {
+                    labels: rows.map(r => r.label),
+                    datasets: [{
+                        data: rows.map(r => r.value),
+                        borderColor: p.series,
+                        backgroundColor: hexToRgba(p.series, 0.12),
+                        borderWidth: 2,
+                        tension: 0,
+                        fill: true,
+                        pointBackgroundColor: p.series,
+                        pointBorderColor: p.surface,
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointHoverBorderWidth: 2,
+                        pointHoverBackgroundColor: p.series,
+                        pointHoverBorderColor: p.surface
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: {
+                        padding: { top: 12, right: 8, bottom: 4, left: 4 }
+                    },
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        title: { display: false },
+                        tooltip: {
+                            backgroundColor: p.surface,
+                            borderColor: hexToRgba(p.primary, 0.12),
+                            borderWidth: 1,
+                            titleColor: p.secondary,
+                            bodyColor: p.primary,
+                            titleFont: { family: "system-ui, sans-serif", size: 12, weight: "500" },
+                            bodyFont: { family: "system-ui, sans-serif", size: 15, weight: "600" },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            caretSize: 0,
+                            callbacks: {
+                                label: ctx => `${fmt.format(ctx.parsed.y)} (${(ctx.parsed.y / TARGET * 100).toFixed(1)}%)`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            border: { color: p.baseline },
+                            ticks: {
+                                color: p.muted,
+                                font: { family: "system-ui, sans-serif", size: 12 },
+                                padding: 8
+                            }
+                        },
+                        y: {
+                            min: 0,
+                            max: yMax,
+                            grid: {
+                                color: p.grid,
+                                drawTicks: false
+                            },
+                            border: { display: false },
+                            ticks: {
+                                stepSize: 5000,
+                                color: p.muted,
+                                font: { family: "system-ui, sans-serif", size: 12 },
+                                padding: 10,
+                                callback: value => fmt.format(value)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function main() {
+            const rows = parseCsv(CSV_DATA)
+            const ctx = document.getElementById("chart")
+            let chart = new Chart(ctx, buildConfig(rows, palette()))
+
+            const dark = window.matchMedia("(prefers-color-scheme: dark)")
+            dark.addEventListener("change", () => {
+                chart.destroy()
+                chart = new Chart(ctx, buildConfig(rows, palette()))
+            })
+        }
+
+        main()
+    </script>
+</body>
+</html>
